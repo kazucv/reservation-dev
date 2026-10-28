@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>予約システム｜開発テスト</title>
+
+    <!-- LIFF -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+    <!-- flatpickr (inline calendar) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/ja.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+      /* （ここはカズのCSSそのままでOK） */
+      :root {
+        --bg: #ffffff;
+        --text: #111;
+        --muted: rgba(17, 17, 17, 0.6);
+        --card: rgba(17, 17, 17, 0.06);
+        --card-strong: rgba(17, 17, 17, 0.08);
+        --shadow: 0 0px 0px rgba(0, 0, 0, 0);
+        --radius: 10px;
+        --radius-lg: 14px;
+        --tap: rgba(11, 91, 211, 0.12);
+        --tabbar-h: 72px;
+        --safe-b: env(safe-area-inset-bottom, 0px);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        margin: 0;
+        color: var(--text);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Hiragino Sans",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        padding-bottom: 0px;
+        overflow: hidden;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .app {
+        min-height: 100%;
+        height: 100dvh; /* iOSの可変UI対策 */
+        display: flex;
+        flex-direction: column;
+      }
+
+      .header {
+        position: sticky;
+        top: 0;
+        flex: 0 0 auto;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .header-inner {
+        /* max-width: 720px; */
+        margin: 0 auto;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .header-inner .logo {
+        font-weight: bold;
+        font-size: 15px;
+      }
+      .brand {
+        display: flex;
+        justify-content: space-between;
+        line-height: 1.1;
+        gap: 3px;
+        color: var(--muted);
+      }
+      .brand .sub {
+        font-size: 12px;
+      }
+      .brand .cap {
+        font-size: 10px;
+        line-height: 1.3;
+        font-weight: 500;
+      }
+
+      #status {
+        max-width: 720px;
+        padding: 10px 16px 0;
+        color: var(--muted);
+        font-size: 13px;
+        white-space: pre-wrap;
+      }
+
+      .content {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        /* max-width: 720px; */
+        padding: 1em;
+        padding-bottom: 3em;
+        -webkit-overflow-scrolling: touch;
+        /* padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 22px); */
+        background-color: #efefef;
+        overscroll-behavior: contain;
+        height: calc(100vh - var(--header) - var(--tabbar));
+      }
+
+      #ptr {
+        pointer-events: none; /* ✅ 触っても下のボタンを押せる */
+      }
+
+      .ptr {
+        position: sticky;
+        top: 0;
+        text-align: center;
+        font-size: 12px;
+        padding: 10px 0;
+        opacity: 0.7;
+      }
+
+      .title {
+        margin: 16px 0 12px;
+        letter-spacing: -0.02em;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 14px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0 10px;
+      }
+      .back {
+        border: 0;
+        background: var(--card);
+        padding: 8px 16px;
+        border-radius: 25px;
+        font-weight: 700;
+        color: rgba(11, 91, 211, 1);
+        display: flex;
+        align-items: center;
+      }
+
+      .back i {
+        margin-left: -0.5rem;
+        margin-right: 0.3rem;
+      }
+      .back:active {
+        transform: translateY(1px);
+      }
+
+      .card {
+        background: var(--bg);
+        border-radius: var(--radius-lg);
+        padding: 14px 16px;
+        margin-bottom: 10px;
+      }
+
+      .list-heading {
+        margin: 16px 0 8px;
+        font-size: 13px;
+        font-weight: 700;
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      .flatpickr-rContainer {
+        padding: 1rem;
+        width: 100%;
+      }
+      .flatpickr-weekdays .flatpickr-weekdaycontainer {
+        gap: 0.3rem;
+      }
+      .flatpickr-days {
+        width: 100%;
+      }
+      .flatpickr-calendar {
+        width: 100% !important;
+        border: 0 !important;
+        border-radius: var(--radius-lg) !important;
+        box-shadow: var(--shadow) !important;
+        overflow: hidden;
+      }
+      .dayContainer {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        column-gap: 0.3rem;
+        width: 100%;
+        max-width: initial;
+        place-items: center;
+        min-width: initial;
+      }
+      .flatpickr-current-month .flatpickr-monthDropdown-months {
+        padding: 0.3rem;
+        border-radius: 6px;
+      }
+      .flatpickr-current-month .numInputWrapper {
+        pointer-events: none;
+        margin-left: auto;
+        margin-right: 0.5rem;
+        width: initial;
+      }
+      .flatpickr-months {
+        background: rgba(0, 0, 0, 0.02);
+      }
+      .flatpickr-current-month {
+        font-size: 16px !important;
+        font-weight: 800 !important;
+        padding: initial;
+        align-items: center;
+        width: 100%;
+        display: flex;
+        left: initial;
+        height: initial;
+        position: relative;
+      }
+      .flatpickr-months .flatpickr-prev-month.flatpickr-disabled,
+      .flatpickr-months .flatpickr-next-month.flatpickr-disabled {
+        display: flex;
+        pointer-events: none;
+        opacity: 0.1;
+      }
+      .flatpickr-months .flatpickr-prev-month,
+      .flatpickr-months .flatpickr-next-month {
+        display: flex;
+        align-items: center;
+      }
+      .flatpickr-months .flatpickr-month {
+        height: initial;
+        position: initial;
+        display: flex;
+        align-items: center;
+      }
+      .flatpickr-months .flatpickr-prev-month,
+      .flatpickr-months .flatpickr-next-month {
+        position: relative;
+        height: initial;
+        padding: 20px 10px;
+        display: flex;
+        align-items: center;
+      }
+      .flatpickr-weekday {
+        color: rgba(0, 0, 0, 0.45) !important;
+        font-weight: 700 !important;
+      }
+      .flatpickr-day {
+        max-width: 38px;
+        line-height: 36px;
+        width: 100%;
+        border-radius: 25px !important;
+      }
+      .flatpickr-day.selected,
+      .flatpickr-day.startRange,
+      .flatpickr-day.endRange,
+      .flatpickr-day.selected.inRange {
+        background: #dbeafe !important;
+        border-color: #dbeafe !important;
+        color: #0b5bd3 !important;
+        font-weight: 800 !important;
+      }
+      .flatpickr-day.today {
+        border-color: rgba(0, 0, 0, 0.1) !important;
+      }
+
+      section [class$="-note"] {
+        margin-top: 2em;
+      }
+
+      section [class$="-note"] h2 {
+        font-size: 18px;
+      }
+
+      section [class$="-note"] ul {
+        padding: 0 1em 0 2em;
+        font-size: 14px;
+      }
+
+      section [class$="-note"] h3 {
+        font-size: 16px;
+        margin-top: 1.5em;
+      }
+
+      section [class$="-note"] dl {
+        padding: 0 1em;
+        font-size: 14px;
+      }
+
+      section [class$="-note"] dl div {
+        margin-bottom: 1em;
+      }
+
+      section [class$="-note"] dl dt {
+        font-weight: 500;
+        margin-bottom: 0.5em;
+      }
+
+      section [class$="-note"] dl dd {
+        margin-left: 2.5em;
+        text-indent: -1.15em;
+      }
+
+      section [class$="-note"] dl dd span {
+        display: block;
+        text-indent: initial;
+        color: var(--muted);
+      }
+
+      section [class$="-note"] [class$="__hint"] {
+        font-size: 14px;
+      }
+
+      #slotCount {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 10px;
+      }
+      .group {
+        margin: 14px 0 18px;
+      }
+
+      .group h3 {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-weight: bold;
+        letter-spacing: 0.02em;
+      }
+
+      #slotsPM,
+      #slotsAM {
+        overflow: hidden;
+        border-radius: var(--radius);
+      }
+
+      .slot-btn {
+        width: 100%;
+        border: 0;
+        padding: 14px;
+        /* border-radius: var(--radius); */
+        background: var(--bg);
+        /* margin: 10px 0; */
+        text-align: left;
+        font-size: 16px;
+        /* font-weight: bold; */
+        color: #0b5bd3;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      button.slot-btn:after {
+        content: "\e13a";
+        font-family: "Phosphor";
+        margin-left: auto;
+      }
+
+      .slot-btn + .slot-btn {
+        border-top: 1px solid #eee;
+      }
+
+      .slot-btn:active {
+        background: var(--tap);
+        transform: translateY(1px);
+      }
+
+      .label {
+        margin-top: 14px;
+        color: var(--muted);
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      input,
+      textarea {
+        width: 100%;
+        border: 0;
+        background: var(--bg);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        font-size: 16px;
+        outline: none;
+        margin: 10px 0 0;
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      input:focus,
+      textarea:focus {
+        background: #dbeafe;
+      }
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+
+      .primary {
+        width: 100%;
+        border: 0;
+        padding: 18px 16px;
+        border-radius: var(--radius-lg);
+        background: #3262cf;
+        font-size: 18px;
+        font-weight: bold;
+        color: #fff;
+        margin-top: 16px;
+      }
+      .primary:active {
+        transform: translateY(1px);
+      }
+      .hint {
+        opacity: 0.6;
+        font-size: 13px;
+        margin-top: 10px;
+      }
+
+      .done-actions {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .ghost {
+        width: 100%;
+        border: 0;
+        padding: 16px;
+        border-radius: var(--radius-lg);
+        background: var(--card);
+        font-size: 16px;
+        font-weight: 800;
+        color: rgba(11, 91, 211, 1);
+      }
+      .ghost:active {
+        transform: translateY(1px);
+      }
+
+      .tabbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+        position: sticky;
+        bottom: 0;
+        flex: 0 0 auto;
+        padding-bottom: var(--safe-b);
+      }
+      .tabbar-inner {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 8px 12px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .tab {
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        padding: 4px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .tab .ico {
+        font-size: 16px;
+        line-height: 1;
+      }
+      .tab.is-active {
+        color: #0b5bd3;
+        background: rgba(11, 91, 211, 0.08);
+      }
+      .tab:active {
+        transform: translateY(1px);
+      }
+
+      #date {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        width: 1px;
+        height: 1px;
+      }
+      .danger-btn {
+        border: 0;
+        padding: 8px 18px;
+        border-radius: 30px;
+        font-weight: bold;
+        background: rgb(255 200 200);
+        color: #d30000;
+        font-size: 14px;
+      }
+      .ghost-btn {
+        border: 0;
+        padding: 8px 18px;
+        border-radius: 30px;
+        font-weight: bold;
+        background: rgb(197 220 255);
+        color: #004bbc;
+        font-size: 14px;
+      }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 999;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        z-index: 1000;
+        padding: 16px;
+      }
+
+      .modal-card {
+        width: min(92vw, 420px);
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+        overflow: hidden;
+      }
+
+      .modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 14px 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      .modal-title {
+        font-weight: bold;
+        font-size: 20px;
+      }
+
+      .modal-x {
+        appearance: none;
+        border: none;
+        background: transparent;
+        font-size: 22px;
+        line-height: 1;
+        padding: 6px 10px;
+        cursor: pointer;
+        opacity: 0.65;
+      }
+
+      .modal-x:active {
+        transform: scale(0.98);
+      }
+
+      .modal-body {
+        padding: 14px;
+      }
+
+      .modal-text {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .modal-meta {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.04);
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+
+      .modal-hint {
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.65;
+      }
+
+      .modal-foot {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        padding: 12px 14px 14px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      /* view切り替えの気配用 */
+      .view {
+        transition: opacity 0.12s ease-out;
+      }
+
+      .view.hidden {
+        opacity: 0;
+      }
+
+      .view:not(.hidden) {
+        opacity: 1;
+      }
+
+      /* iOSっぽくしたいなら任意 */
+      @media (prefers-reduced-motion: no-preference) {
+        .modal-card {
+          animation: pop 0.14s ease-out;
+        }
+        @keyframes pop {
+          from {
+            transform: translateY(6px);
+            opacity: 0.85;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+      }
+
+      /* ==========================
+   UI polish (v1) - add-on
+   ========================== */
+
+      /* --- tokens: まずは触りやすい所だけ --- */
+      :root {
+        --blue: #0b5bd3;
+        --focus: rgba(11, 91, 211, 0.1);
+        --border: rgba(0, 0, 0, 0.08);
+        --border-weak: rgba(0, 0, 0, 0.06);
+        --text-weak: rgba(17, 17, 17, 0.72);
+      }
+
+      /* --- typography: 全体の“上品さ”ここで決まる --- */
+      body {
+        line-height: 1.55;
+      }
+      .title {
+        /* 42はカッコいいけどスマホで強いので可変に */
+        font-size: clamp(25px, 5vw, 42px);
+      }
+      .subtitle {
+        line-height: 1.5;
+        color: var(--text-weak);
+      }
+
+      .card {
+        line-height: 1.5;
+      }
+
+      #viewCalendar .card {
+        background: none;
+        margin: initial;
+      }
+
+      #loadingOverlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+
+      /* 今の setLoading が使ってる hidden と合わせる */
+      #loadingOverlay.hidden {
+        display: none;
+      }
+
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        pointer-events: all; /* ← これで背面タップを完全ブロック */
+      }
+
+      .loading-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 18px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      }
+
+      .spinner {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 3px solid rgba(0, 0, 0, 0.12);
+        border-top-color: rgba(0, 0, 0, 0.55);
+        animation: spin 0.8s linear infinite;
+      }
+
+      .loading-text {
+        font-size: 13px;
+        opacity: 0.75;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* --- tap feedback: iOSっぽい押し感 --- */
+      button {
+        -webkit-tap-highlight-color: transparent;
+      }
+      .back,
+      .slot-btn,
+      .primary,
+      .ghost,
+      .tab,
+      .danger-btn,
+      .ghost-btn {
+        transition:
+          transform 0.06s ease,
+          background 0.12s ease,
+          opacity 0.12s ease;
+      }
+      .back:active,
+      .slot-btn:active,
+      .primary:active,
+      .ghost:active,
+      .tab:active,
+      .danger-btn:active,
+      .ghost-btn:active {
+        transform: translateY(1px);
+      }
+
+      /* --- focus: 入力時の気持ちよさ --- */
+
+      /* --- buttons: disabled状態を揃える --- */
+      .primary:disabled,
+      .ghost:disabled,
+      .back:disabled,
+      .slot-btn:disabled,
+      .danger-btn:disabled,
+      .ghost-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      /* --- status: 文字が“ただのログ”に見えないように --- */
+      #status {
+        padding-top: 10px;
+        padding-bottom: 6px;
+        letter-spacing: 0.01em;
+      }
+      #status::before {
+        content: "";
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        margin-right: 8px;
+        background: rgba(0, 0, 0, 0.18);
+        transform: translateY(-1px);
+      }
+
+      /* --- tabbar: safe area と高さの見た目を少し安定 --- */
+      .tabbar {
+        padding-bottom: var(--safe-b);
+      }
+      .tabbar-inner {
+        padding-bottom: 12px;
+      }
+
+      /* --- flatpickr: 見た目の境界を少しだけ整える --- */
+      .flatpickr-calendar {
+        border: 1px solid var(--border-weak) !important;
+      }
+      .flatpickr-months {
+        border-bottom: 1px solid var(--border-weak);
+      }
+
+      /* --- modal: 影と区切りを少しだけ上品に --- */
+      .modal-card {
+        border: 1px solid var(--border);
+      }
+      .modal-meta {
+        border: 1px solid var(--border-weak);
+      }
+
+      .no-slot {
+        opacity: 0.6;
+        font-size: 13px;
+        margin-left: 0.5rem;
+      }
+      .calendar-loading-notice {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px; margin-bottom: 12px; border-radius: 10px;
+        background: #eaf2ff; color: #184c91; font-size: 14px;
+      }
+      .calendar-loading-notice small { font-size: 12px; }
+      .calendar-loading-spinner {
+        flex: 0 0 18px; width: 18px; height: 18px;
+        border: 2px solid #bdd1ef; border-top-color: #3262cf;
+        border-radius: 50%; animation: spin .8s linear infinite;
+      }
+      .calendar-is-loading { opacity: .55; pointer-events: none; }
+      @media (prefers-reduced-motion: reduce) {
+        .calendar-loading-spinner { animation: none; }
+      }
+      .demo-verification { margin-top: 24px; font-size: 13px; color: var(--muted); }
+      .timing-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+      .timing-toggle input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: #3262cf; }
+      .field-error { color: #b42318; font-size: 13px; line-height: 1.5; margin: 6px 4px 0; }
+      input.input-error, textarea.input-error { box-shadow: inset 0 0 0 2px #c62828; background: #fff5f5; }
+      input.input-error:focus, textarea.input-error:focus { background: #fff5f5; outline: 2px solid #c62828; outline-offset: 2px; }
+    </style>
+  </head>
+
+  <body>
+    <div id="loadingOverlay" class="loading-overlay" aria-hidden="false">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <div id="loadingText" class="loading-text">読み込み中...</div>
+      </div>
+    </div>
+
+    <div class="app">
+      <header class="header">
+        <div class="header-inner">
+          <div class="brand">
+            <div class="sub">予約システム｜開発テスト</div>
+            <div class="cap">日時選択からキャンセルまで体験できます</div>
+          </div>
+          <div class="logo" id="headerGreeting">こんにちは</div>
+        </div>
+      </header>
+
+      <div id="status">loading...</div>
+
+      <main class="content">
+        <div id="ptr" class="ptr hidden">更新中…</div>
+        <input id="date" />
+
+        <section id="viewCalendar" class="view">
+          <div class="title">日付選択</div>
+          <div class="subtitle">ご希望の日付を選んでね。空き時間は次の画面で確認できます。</div>
+
+          <div id="calendarLoadingNotice" class="calendar-loading-notice hidden" role="status" aria-live="polite">
+            <span class="calendar-loading-spinner" aria-hidden="true"></span>
+            <div>空き枠を確認しています…<br /><small>先に日付を選べます。空き時間は取得でき次第表示します。</small></div>
+          </div>
+          <div id="calendar"></div>
+
+          <!-- ✅ カレンダー下の案内（ここに追加） -->
+          <section class="calendar-note" aria-label="デモのご案内">
+            <h2 class="calendar-note__title">開発テストについて</h2>
+
+            <ul class="calendar-note__list">
+              <li>実際の来店予約は行われません。</li>
+              <li>氏名・電話番号・備考には、実際の個人情報を入力しないでください。</li>
+              <li>日時の選択、予約の登録、予約一覧の確認、キャンセルを体験できます。</li>
+            </ul>
+
+            <h3 class="calendar-note__subtitle">お試し用の入力例</h3>
+            <ul class="calendar-note__list">
+              <li>お名前：デモテスト</li>
+              <li>電話番号：09000000000</li>
+              <li>備考：動作確認</li>
+            </ul>
+
+            <h3 class="calendar-note__subtitle">予約の確認・キャンセル</h3>
+            <ul class="calendar-note__list">
+              <li>画面下の「予約一覧」から操作できます。</li>
+              <li>予約やキャンセルが完了すると、友だち追加したデモ用公式アカウントからLINE通知が届きます。</li>
+            </ul>
+
+            <p class="calendar-note__hint">※最新の予約状況は、画面を更新してご確認ください。</p>
+          </section>
+        </section>
+
+        <section id="viewSlots" class="view hidden">
+          <div class="topbar">
+            <button id="backToCalendar" class="back">
+              <i class="ph ph-caret-left"></i>
+              日付選択にもどる
+            </button>
+          </div>
+
+          <div class="title">空き時間</div>
+          <div id="slotCount"></div>
+
+          <div class="group">
+            <h3>午前</h3>
+            <div id="slotsAM"></div>
+          </div>
+
+          <div class="group">
+            <h3>午後</h3>
+            <div id="slotsPM"></div>
+          </div>
+        </section>
+
+        <section id="viewForm" class="view hidden">
+          <div class="topbar">
+            <button id="backToSlots" class="back">
+              <i class="ph ph-caret-left"></i>
+              空き時間にもどる
+            </button>
+          </div>
+
+          <div class="title">入力</div>
+
+          <div class="card" id="summary"></div>
+
+          <div class="label">お試し用の情報</div>
+          <div class="hint">開発テストです。実際の来店予約は行われません。氏名・電話番号・備考には、実際の個人情報を入力しないでください。</div>
+          <input id="name" aria-label="お名前" aria-describedby="nameError" maxlength="80" placeholder="例：デモテスト" autocomplete="off" />
+          <p id="nameError" class="field-error hidden" role="alert"></p>
+          <input id="tel" aria-label="電話番号" aria-describedby="telError" maxlength="40" placeholder="例：09000000000" inputmode="numeric" autocomplete="off" />
+          <p id="telError" class="field-error hidden" role="alert"></p>
+
+          <div class="label">メモ</div>
+          <textarea id="note" aria-label="備考" aria-describedby="noteError" maxlength="500" placeholder="例：動作確認（任意）"></textarea>
+          <p id="noteError" class="field-error hidden" role="alert"></p>
+
+          <button id="confirmBtn" class="primary">内容を確認する</button>
+          <div class="hint">お名前は80文字以内、電話番号は0から始まる10〜11桁、備考は500文字以内で入力してください。</div>
+        </section>
+
+        <section id="viewConfirm" class="view hidden">
+          <div class="topbar">
+            <button id="confirmBackBtn" class="back">
+              <i class="ph ph-caret-left"></i>
+              もどって修正
+            </button>
+          </div>
+
+          <div class="title">確認</div>
+          <div class="subtitle">内容を確認してね</div>
+
+          <div class="card" id="confirmSummary"></div>
+
+          <button id="confirmSubmitBtn" class="primary">この内容で予約する</button>
+          <div class="hint">デモ用の予約データを登録します。実際の来店予約は行われません。</div>
+          <button id="checkReservationStatusBtn" type="button" class="ghost hidden">予約の成立状況を確認</button>
+        </section>
+
+        <section id="viewDone" class="view hidden">
+          <div class="title">完了</div>
+          <div class="card" id="doneSummary"></div>
+
+          <div class="done-actions">
+            <button id="doneToCalendar" class="ghost">別日を予約する</button>
+            <button id="doneToSlots" class="ghost">同じ日の空き時間を見る</button>
+          </div>
+        </section>
+
+        <section id="viewList" class="view hidden">
+          <div class="title">予約一覧</div>
+          <div id="listRoot"></div>
+
+          <section class="list-note" aria-label="予約一覧のご案内">
+            <h2 class="list-note__title">ご予約・キャンセルについて</h2>
+
+            <dl class="list-note__faq">
+              <div class="list-note__qa">
+                <dt>Q. 予約内容はどこで確認できますか？</dt>
+                <dd>A. このページの「予約一覧」からご自身の予約を確認できます。</dd>
+              </div>
+
+              <div class="list-note__qa">
+                <dt>Q. キャンセルしたい場合はどうすればいいですか？</dt>
+                <dd>A. キャンセルボタンが表示されている予約は、この一覧からキャンセルできます。</dd>
+              </div>
+
+              <div class="list-note__qa">
+                <dt>Q. キャンセルした予約を、もう一度試せますか？</dt>
+                <dd>A. 「もう一度予約する」ボタンが表示されていれば操作できます。空き状況によっては予約できない場合があります。</dd>
+              </div>
+            </dl>
+
+            <p class="list-note__hint">
+              ※最新の予約状況は、画面を更新してご確認ください。
+              <br />
+              表示が古い場合は、画面を下に引っ張って更新してください。
+            </p>
+          </section>
+        </section>
+
+        <section id="viewSettings" class="hidden">
+          <div class="title">ご案内</div>
+          <button id="checkReservationStatusSettingsBtn" type="button" class="ghost hidden">予約の成立状況を確認</button>
+          <div class="card">
+            <div class="item">
+              <h3 class="setting__title">このデモについて</h3>
+              <p>LINEから日時を選び、予約の登録・確認・キャンセルまでを体験できる予約システムです。実際の来店予約は行われません。</p>
+            </div>
+
+            <div class="item">
+              <h3 class="setting__title">お試し用の入力情報</h3>
+              <p>氏名・電話番号・備考には、実際の個人情報を入力しないでください。</p>
+              <p>
+                お名前：デモテスト
+                <br />
+                電話番号：09000000000
+                <br />
+                備考：動作確認
+              </p>
+            </div>
+
+            <div class="item">
+              <h3 class="setting__title">予約の確認・キャンセル</h3>
+              <p>画面下の「予約一覧」から、ご自身のデモ予約を確認できます。キャンセルボタンが表示されている予約は、一覧からキャンセルできます。</p>
+              <p>日時を変更したい場合は、一度キャンセルしてから別の空き枠を選んでください。</p>
+            </div>
+
+            <div class="item">
+              <h3 class="setting__title">LINE通知について</h3>
+              <p>デモ用の公式アカウントを友だち追加すると、予約・キャンセルの完了通知をLINEで受け取れます。</p>
+            </div>
+
+            <div class="item">
+              <h3 class="setting__title">データについて</h3>
+              <p>入力内容と予約情報は、動作確認のためデモ用の保存先に記録されます。また、利用者を識別するためにLINEのユーザー情報を使用します。</p>
+            </div>
+
+            <div class="item">
+              <h3 class="setting__title">表示が更新されない場合</h3>
+              <p>画面を下に引っ張って更新してください。通信エラーが出た場合は、再操作の前に「予約一覧」で登録状況を確認してください。</p>
+            </div>
+            <details id="demoVerificationSettings" class="demo-verification hidden">
+              <summary>動作確認用の設定</summary>
+              <label class="timing-toggle">
+                <input id="toggleTimingPanels" type="checkbox" autocomplete="off" />
+                <span>予約画面に計測結果を表示する</span>
+              </label>
+              <p class="hint">通常はオフでご利用ください。画面を開き直すとオフに戻ります。</p>
+              <label class="timing-toggle">
+                <input id="simulateLostReservationReply" type="checkbox" autocomplete="off" />
+                <span>次の予約で、成功応答を受け取れない状態をテストする</span>
+              </label>
+              <p class="hint">デモ検証専用です。予約は実際に登録されます。成功応答を1回だけ未受信として扱い、成立状況を自動確認します。回線は切断しません。</p>
+            </details>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tabbar" aria-label="tabbar">
+        <div class="tabbar-inner">
+          <button id="tabReserve" class="tab is-active" type="button">
+            <div class="ico"><i class="ph ph-calendar-blank"></i></div>
+            <div>予約</div>
+          </button>
+          <button id="tabList" class="tab" type="button">
+            <div class="ico"><i class="ph ph-list-bullets"></i></div>
+            <div>予約一覧</div>
+          </button>
+          <button id="tabSettings" class="tab" type="button">
+            <div class="ico"><i class="ph ph-info"></i></div>
+            <div>ご案内</div>
+          </button>
+        </div>
+      </nav>
+    </div>
+
+    <!-- Cancel Confirm Modal -->
+    <div id="modalOverlay" class="modal-overlay hidden" aria-hidden="true"></div>
+
+    <div id="cancelModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cancelModalTitle">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div id="cancelModalTitle" class="modal-title">キャンセル確認</div>
+          <button type="button" id="cancelModalClose" class="modal-x" aria-label="閉じる">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div id="cancelModalText" class="modal-text">本当にキャンセルしますか？</div>
+
+          <div id="cancelModalMeta" class="modal-meta"></div>
+
+          <div id="cancelModalHint" class="modal-hint">※このデモ予約をキャンセルします。再予約は、その時点の空き状況によります。</div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" id="cancelModalNo" class="ghost-btn">やめる</button>
+          <button type="button" id="cancelModalYes" class="danger-btn">キャンセルする</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./app.js?v=20261029-dev-01"></script>
+  </body>
+</html>
