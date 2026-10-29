@@ -826,6 +826,13 @@
       .field-error { color: #b42318; font-size: 13px; line-height: 1.5; margin: 6px 4px 0; }
       input.input-error, textarea.input-error { box-shadow: inset 0 0 0 2px #c62828; background: #fff5f5; }
       input.input-error:focus, textarea.input-error:focus { background: #fff5f5; outline: 2px solid #c62828; outline-offset: 2px; }
+    
+      .menu-choice { display:flex; align-items:center; gap:14px; padding:20px; margin:12px 0; background:white; border:2px solid #dce5f4; border-radius:16px; cursor:pointer; }
+      .menu-choice:has(input:checked) { border-color:#3365cb; background:#edf3ff; }
+      .menu-choice input { width:22px; height:22px; flex:0 0 22px; accent-color:#3365cb; }
+      #menuTotal { font-weight:700; padding:16px 0; }
+      #menuNext { width:100%; padding:18px; border:0; border-radius:14px; background:#3365cb; color:white; font-size:18px; font-weight:700; }
+      #menuNext:disabled { opacity:.45; }
     </style>
   </head>
 
@@ -842,7 +849,7 @@
         <div class="header-inner">
           <div class="brand">
             <div class="sub">予約システム｜開発テスト</div>
-            <div class="cap">日時選択からキャンセルまで体験できます</div>
+            <div class="cap">メニュー選択からキャンセルまで体験できます</div>
           </div>
           <div class="logo" id="headerGreeting">こんにちは</div>
         </div>
@@ -854,7 +861,20 @@
         <div id="ptr" class="ptr hidden">更新中…</div>
         <input id="date" />
 
-        <section id="viewCalendar" class="view">
+        <section id="viewMenu" class="view hidden" aria-labelledby="menuTitle">
+          <h1 id="menuTitle" class="title">メニュー選択</h1>
+          <p class="subtitle">ご希望のメニューを選んでください。複数選択できます。</p>
+          <p class="hint">シャンプー・ブローは単独利用専用です。ほかのメニューと同時には選べません。</p>
+          <div id="menuChoices" role="group" aria-label="予約メニュー"></div>
+          <p id="menuTotal" role="status" aria-live="polite">メニューを選んでください</p>
+          <button id="menuLoadRetry" type="button" class="ghost hidden">もう一度読み込む</button>
+          <button id="menuNext" type="button" class="primary" disabled>日付を選ぶ</button>
+          <p class="hint">表示時間は予約で確保する施術時間です。シャンプー・ブローは施術目安20分、予約時間30分です。片付け時間は店舗側で別に確保します。</p>
+          <p class="hint">開発テストです。実際の個人情報は入力しないでください。</p>
+        </section>
+        <section id="viewCalendar" class="view hidden">
+          <div id="selectedMenusSummary" class="card"></div>
+          <button id="changeMenusBtn" type="button" class="ghost">メニューを変更する</button>
           <div class="title">日付選択</div>
           <div class="subtitle">ご希望の日付を選んでね。空き時間は次の画面で確認できます。</div>
 
@@ -871,7 +891,7 @@
             <ul class="calendar-note__list">
               <li>実際の来店予約は行われません。</li>
               <li>氏名・電話番号・備考には、実際の個人情報を入力しないでください。</li>
-              <li>日時の選択、予約の登録、予約一覧の確認、キャンセルを体験できます。</li>
+              <li>メニュー・日時の選択、予約の登録、予約一覧の確認、キャンセルを体験できます。</li>
             </ul>
 
             <h3 class="calendar-note__subtitle">お試し用の入力例</h3>
@@ -988,7 +1008,7 @@
 
               <div class="list-note__qa">
                 <dt>Q. キャンセルした予約を、もう一度試せますか？</dt>
-                <dd>A. 「もう一度予約する」ボタンが表示されていれば操作できます。空き状況によっては予約できない場合があります。</dd>
+                <dd>A. 「この日で新しく予約」または「新しく予約」から、メニューと日時を選び直せます。空き状況によっては予約できない場合があります。</dd>
               </div>
             </dl>
 
@@ -1006,7 +1026,7 @@
           <div class="card">
             <div class="item">
               <h3 class="setting__title">このデモについて</h3>
-              <p>LINEから日時を選び、予約の登録・確認・キャンセルまでを体験できる予約システムです。実際の来店予約は行われません。</p>
+              <p>LINEからメニューと日時を選び、予約の登録・確認・キャンセルまでを体験できる予約システムです。実際の来店予約は行われません。</p>
             </div>
 
             <div class="item">
@@ -1101,6 +1121,6 @@
       </div>
     </div>
 
-    <script src="./app.js?v=20261029-dev-01"></script>
+    <script src="./app.js?v=20261029-menu-01"></script>
   </body>
 </html>

@@ -11,8 +11,8 @@ document.getElementById('toggleTimingPanels')?.addEventListener('change', event 
   syncTimingPanels_();
 });
 
-// Startup measurement v20261029-dev-01. Times start at browser navigation, not the LINE tap.
-const startupMeasure_ = { version: '20261029-dev-01', jsStart: performance.now(), ms: {}, completed: false };
+// Startup measurement v20261029-menu-01. Times start at browser navigation, not the LINE tap.
+const startupMeasure_ = { version: '20261029-menu-01', jsStart: performance.now(), ms: {}, completed: false };
 async function measureStartupPhase_(name, fn) {
   const start = performance.now();
   try { return await fn(); }
@@ -469,6 +469,7 @@ function showView(name) {
   ++viewEpoch_;
   const views = [
     viewCalendar,
+    viewMenu,
     viewSlots,
     viewForm,
     viewDone,
@@ -483,6 +484,7 @@ function showView(name) {
   // 表示対象を決める
   let target = null;
   if (name === "calendar") target = viewCalendar;
+  if (name === "menu") target = viewMenu;
   if (name === "slots") target = viewSlots;
   if (name === "form") target = viewForm;
   if (name === "confirm") target = viewConfirm;
@@ -527,6 +529,7 @@ function showDone(reserveResult) {
     <div style="margin-top:8px;" class="sub">予約ID: ${rid}</div>
     <div style="margin-top:8px;" class="sub">日付: ${escapeHtml(reserveResult?.start ? slotIdToYmd(reserveResult.slotId) : (selectedDate || ""))}</div>
     <div style="margin-top:4px;" class="sub">時間: ${startHm} 〜 ${endHm}</div>
+    <div style="margin-top:8px;">メニュー：${menuNamesHtml_(reserveResult?.menuNames)}</div>
     ${reserveResult?.notifications?.user === 'failed'
       ? '<p style="margin-top:12px;color:#9a3412;">予約は成立しています。LINE通知を送信できませんでした。予約内容は「予約一覧」で確認できます。</p>'
       : ''}
@@ -724,6 +727,8 @@ async function fetchMyReservations() {
 async function fetchSlotsYm(ym, opts = {}) {
   if (!profile?.userId) throw new Error("ユーザー情報が取得できていません");
 
+  if (!menuSelectionValid_()) throw new Error('先にメニューを選んでください。');
+  const menuRequestSignature = JSON.stringify([...selectedMenuIds_].sort()) + ':' + menuSettingsVersion_;
   const force = !!opts.force;
 
   // force の時はフロントキャッシュを無視
@@ -747,6 +752,7 @@ async function fetchSlotsYm(ym, opts = {}) {
 
   const payload = {
     action: "getSlots",
+    menuIds: [...selectedMenuIds_],
     ym,
     force, // ✅ ここが重要
   };
@@ -755,12 +761,19 @@ async function fetchSlotsYm(ym, opts = {}) {
     const { data, aborted } = await postJson(GAS_URL, payload, 25000);
 
     if (aborted) return null;
-    if (monthGeneration !== slotsGenerationByMonth_.get(ym)) return null;
+    if (monthGeneration !== slotsGenerationByMonth_.get(ym) || menuRequestSignature !== JSON.stringify([...selectedMenuIds_].sort()) + ':' + menuSettingsVersion_) return null;
 
     if (!data?.ok || !Array.isArray(data.slots)) {
-      throw new Error(`getSlots NG: ${JSON.stringify(data)}`);
+      throw new Error(data?.message || '空き時間を取得できませんでした。');
     }
 
+    if (data.version !== menuSettingsVersion_) {
+      if (isViewVisible(viewCalendar) || isViewVisible(viewSlots)) {
+        void openMenuSelection_();
+        log('予約設定が変更されました。メニューを選び直してください。');
+      }
+      return null;
+    }
     slotsCache.set(ym, data.slots);
     slotsCacheSavedAt_.set(ym, Date.now());
     invalidateAvailableDaysSet();
@@ -1067,6 +1080,7 @@ function renderFormSummary() {
   const dd = d.getDate();
 
   summary.innerHTML = `
+    <div>メニュー：${menuNamesHtml_()}</div>
     <div>日付: ${y}年${m}月${dd}日 / 時間: ${startHm} 〜 ${endHm}</div>
   `;
 }
@@ -1251,6 +1265,8 @@ async function reserveSelected() {
   const payload = {
     action: "createReservation",
     slotId: selectedSlot.slotId,
+    menuIds: [...selectedMenuIds_],
+    settingsVersion: menuSettingsVersion_,
     name,
     tel,
     note,
@@ -1294,6 +1310,11 @@ async function reserveSelected() {
       showView('form');
       setReservationFieldError_(r.data.field, r.data.message);
       log('入力内容をご確認ください。');
+      return;
+    }
+    if (['settings_changed', 'menu_invalid'].includes(r.data?.code)) {
+      await openMenuSelection_();
+      log(r.data.message);
       return;
     }
     // その他のエラー
@@ -1348,6 +1369,7 @@ function renderConfirmSummary() {
   confirmSummary.innerHTML = `
     <div style="font-weight:700; font-size:16px;">${ymdLabel}</div>
     <div style="margin-top:6px;">時間：${startHm}〜${endHm}</div>
+    <div style="margin-top:6px;">メニュー：${menuNamesHtml_()}</div>
     <hr style="opacity:.2; margin:12px 0;" />
     <div>お名前：${escapeHtml(name)}</div>
     <div>電話番号：${escapeHtml(tel)}</div>
@@ -1521,6 +1543,7 @@ function renderReservationList(items) {
     card.className = "card";
     card.innerHTML = `
       <div style="font-weight:700;">${ymdLabel} / ${time}</div>
+      ${it.menuNames?.length ? `<div style="margin-top:8px;">${menuNamesHtml_(it.menuNames)}</div>` : '<div class="hint">メニュー対応前の予約</div>'}
       <div style="margin-top:6px; font-size:13px;">${statusLabel}</div>
       ${
         rid
@@ -1614,15 +1637,7 @@ function renderReservationList(items) {
 
       if (action === "rebook") {
         const ymd2 = normalizeYmd(pickReservationYmd(it) || '');
-        setActiveTab('reserve');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd2) || ymd2 < todayYmdJst()) {
-          ensureCalendarView();
-          log('新しく予約する日付を選んでください。');
-          return;
-        }
-        if (!fp) ensureCalendarView();
-        // Do not rely on flatpickr's change event: selecting today may be unchanged.
-        await openSlotsForDate_(ymd2, { force: true, syncCalendar: true });
+        await openMenuSelection_(it, /^\d{4}-\d{2}-\d{2}$/.test(ymd2) && ymd2 >= todayYmdJst() ? ymd2 : null);
       }
     });
 
@@ -1885,6 +1900,7 @@ async function run() {
     });
 
     doneToSlots?.addEventListener("click", () => {
+      if (!menuSelectionValid_()) { void openMenuSelection_(); return; }
       // “同じ日の空き時間を見る”
       showView("slots");
       renderSlotsForSelectedDate();
@@ -1958,6 +1974,7 @@ async function run() {
         return;
       }
 
+      if (!menuSelectionValid_()) return;
       setLoading(true, "空き枠を更新中...");
       try {
         const ymd = selectedDate || todayYmdJst();
@@ -1975,10 +1992,94 @@ async function run() {
   });
 }
 
+// Menu selection comes before date/time. No menu or duration is trusted by the server.
+const viewMenu = document.getElementById('viewMenu');
+let menuCatalog_ = null;
+let menuSettingsVersion_ = '';
+let selectedMenuIds_ = [];
+let menuDateAfterSelection_ = null;
+let menuScreenGeneration_ = 0;
+function selectedMenuItems_() { return (menuCatalog_?.menus || []).filter(m => selectedMenuIds_.includes(m.id)); }
+function menuSelectionValid_() {
+  const items = selectedMenuItems_();
+  return items.length > 0 && items.length === selectedMenuIds_.length && !(items.length > 1 && items.some(m => m.standalone));
+}
+function menuNamesHtml_(names) { return escapeHtml((names || selectedMenuItems_().map(m=>m.name)).join(' ＋ ')); }
+function resetMenuSlots_() {
+  selectedSlot = null;
+  slotsCache.clear(); slotsCacheSavedAt_.clear(); slotsInFlight.clear(); slotsGenerationByMonth_.clear();
+  invalidateAvailableDaysSet();
+}
+async function loadMenuCatalog_() {
+  const {data} = await postJson(GAS_URL, {action:'getMenuSettings'}, 20000);
+  if (!data?.ok || !Array.isArray(data.menus)) throw new Error(data?.message || 'メニューを取得できませんでした。');
+  menuCatalog_ = data; menuSettingsVersion_ = data.version;
+  selectedMenuIds_ = selectedMenuIds_.filter(id=>data.menus.some(m=>m.id===id));
+}
+function updateMenuTotal_() {
+  const selected = selectedMenuItems_();
+  const minutes = selected.reduce((sum,m)=>sum+m.minutes,0);
+  document.getElementById('menuTotal').textContent = selected.length
+    ? '予約時間の合計：' + minutes + '分'
+    : 'メニューを選んでください';
+  document.getElementById('menuNext').disabled = !menuSelectionValid_();
+}
+function renderMenuChoices_() {
+  const root = document.getElementById('menuChoices'); root.replaceChildren();
+  for (const menu of menuCatalog_.menus) {
+    const label=document.createElement('label'); label.className='menu-choice';
+    const input=document.createElement('input');input.type='checkbox';input.value=menu.id;input.checked=selectedMenuIds_.includes(menu.id);
+    const text=document.createElement('span');
+    text.textContent=menu.name+'｜'+menu.minutes+'分'+(menu.actualMinutes!==menu.minutes?'（施術目安'+menu.actualMinutes+'分）':'')+(menu.standalone?'・単独専用':'');
+    label.append(input,text);root.append(label);
+    input.addEventListener('change',()=>{
+      if (input.checked) {
+        if (menu.standalone) selectedMenuIds_=[menu.id];
+        else selectedMenuIds_=[...new Set([...selectedMenuIds_.filter(id=>!menuCatalog_.menus.find(m=>m.id===id)?.standalone),menu.id])];
+      } else selectedMenuIds_=selectedMenuIds_.filter(id=>id!==menu.id);
+      root.querySelectorAll('input').forEach(el=>el.checked=selectedMenuIds_.includes(el.value));
+      resetMenuSlots_();updateMenuTotal_();
+    });
+  }
+  updateMenuTotal_();
+}
+async function openMenuSelection_(record = null, day = null) {
+  menuDateAfterSelection_=day;
+  showView('menu');setActiveTab('reserve');setLoading(false);
+  const epoch=viewEpoch_, generation=++menuScreenGeneration_;
+  document.getElementById('menuChoices').textContent='メニューを読み込んでいます…';
+  document.getElementById('menuNext').disabled=true;
+  document.getElementById('menuLoadRetry').classList.add('hidden');
+  log('メニューを選んでね');
+  try {
+    await loadMenuCatalog_();
+    if(generation!==menuScreenGeneration_ || epoch!==viewEpoch_)return;
+    if(record) {
+      selectedMenuIds_=Array.isArray(record.menuIds)?record.menuIds.filter(id=>menuCatalog_.menus.some(m=>m.id===id)):[];
+      if(!menuSelectionValid_())selectedMenuIds_=[];
+    }
+    resetMenuSlots_();renderMenuChoices_();
+  } catch(e) {
+    if(generation!==menuScreenGeneration_ || epoch!==viewEpoch_)return;
+    document.getElementById('menuChoices').textContent='メニューを取得できませんでした。もう一度お試しください。';
+    document.getElementById('menuLoadRetry').classList.remove('hidden');log('メニューを取得できませんでした。');
+  }
+}
+document.getElementById('menuLoadRetry')?.addEventListener('click',()=>openMenuSelection_(null,menuDateAfterSelection_));
+document.getElementById('changeMenusBtn')?.addEventListener('click',()=>openMenuSelection_());
+document.getElementById('menuNext')?.addEventListener('click',async()=>{
+  if(!menuSelectionValid_())return;
+  document.getElementById('selectedMenusSummary').textContent=selectedMenuItems_().map(m=>m.name).join(' ＋ ')+'｜合計'+selectedMenuItems_().reduce((s,m)=>s+m.minutes,0)+'分';
+  const day=menuDateAfterSelection_;menuDateAfterSelection_=null;
+  ensureCalendarView();
+  if(day && day>=todayYmdJst()) await openSlotsForDate_(day,{force:true,syncCalendar:true});
+});
+
 run();
 
 // ====== swipe back (view internal) ======
 function ensureCalendarView() {
+  if (!menuSelectionValid_()) { void openMenuSelection_(); return; }
   showView("calendar");
   if (!fp) initFlatpickr();
   requestAnimationFrame(() => fp?.redraw?.());
